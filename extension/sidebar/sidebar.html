@@ -1,0 +1,84 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Kestrel Repo Bridge</title>
+  <link rel="stylesheet" href="sidebar.css" />
+</head>
+<body>
+  <div class="wrap">
+    <h1>Kestrel Repo Bridge</h1>
+
+    <section class="card">
+      <div class="row">
+        <button id="pingBtn">Ping host</button>
+        <button id="targetsBtn">Targets</button>
+        <button id="stateBtn">State</button>
+        <button id="auditBtn">Audit tail</button>
+      </div>
+      <pre id="statusOut" class="out"></pre>
+    </section>
+
+    <section class="card">
+      <h2>Operator memory</h2>
+      <label for="memoryKey">Key</label>
+      <input id="memoryKey" placeholder="current_focus" />
+      <label for="memoryValue">Value</label>
+      <textarea id="memoryValue" placeholder="What should persist?"></textarea>
+      <div class="row">
+        <button id="memorySaveBtn">Save memory</button>
+        <button id="memoryViewBtn">View memory</button>
+      </div>
+      <pre id="memoryOut" class="out"></pre>
+    </section>
+
+    <section class="card">
+      <h2>Read file</h2>
+      <label for="readPath">Relative path</label>
+      <input id="readPath" placeholder="README.md" />
+      <div class="row">
+        <button id="readBtn">Read</button>
+      </div>
+      <pre id="readOut" class="out"></pre>
+    </section>
+
+    <section class="card">
+      <h2>Apply patch</h2>
+      <label for="patchText">Unified diff</label>
+      <textarea id="patchText" placeholder="Paste a git-style unified diff here"></textarea>
+      <div class="row">
+        <button id="patchBtn">Apply patch</button>
+      </div>
+      <pre id="patchOut" class="out"></pre>
+    </section>
+
+    <section class="card">
+      <h2>Target terminal</h2>
+      <label for="targetSelect">Target</label>
+      <select id="targetSelect">
+        <option value="HOST">HOST</option>
+        <option value="NODE_TEMP">NODE_TEMP</option>
+        <option value="NODE_PERM">NODE_PERM</option>
+      </select>
+      <label for="termCwd">Working dir</label>
+      <input id="termCwd" placeholder=". or remote path" value="." />
+      <label for="termCmd">Command</label>
+      <input id="termCmd" placeholder="pwd" />
+      <div class="row checkbox-row">
+        <label class="checkbox-label"><input type="checkbox" id="elevateCheck" /> Use root helper</label>
+      </div>
+      <div class="row">
+        <button id="termRunBtn">Run</button>
+        <button id="termPollBtn">Poll</button>
+        <button id="termStopBtn">Stop</button>
+      </div>
+      <div class="row">
+        <button id="termCopyBtn">Copy output</button>
+        <button id="termClearBtn">Clear output</button>
+      </div>
+      <pre id="termOut" class="out term selectable"></pre>
+    </section>
+  </div>
+  <script src="sidebar.js"></script>
+</body>
+</html>

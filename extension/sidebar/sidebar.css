@@ -1,0 +1,27 @@
+html, body {
+  margin: 0;
+  padding: 0;
+  background: #0b1220;
+  color: #e5e7eb;
+  font-family: sans-serif;
+  font-size: 14px;
+}
+* { box-sizing: border-box; }
+body { padding: 12px; }
+.wrap { display: flex; flex-direction: column; gap: 14px; }
+h1 { margin: 0 0 6px 0; font-size: 18px; font-weight: 700; }
+h2 { margin: 0 0 10px 0; font-size: 16px; }
+.card { background: #162033; border: 1px solid #2a3650; border-radius: 12px; padding: 12px; }
+label { display: block; margin: 0 0 6px 0; color: #cbd5e1; }
+input, textarea, pre, select { width: 100%; border-radius: 10px; border: 1px solid #334155; background: #071225; color: #e5e7eb; }
+input, textarea, select { padding: 10px 12px; margin-bottom: 10px; }
+textarea { min-height: 120px; resize: vertical; }
+.row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+.checkbox-row { align-items: center; }
+.checkbox-label { display: inline-flex; align-items: center; gap: 8px; margin: 0; }
+.checkbox-label input { width: auto; margin: 0; }
+button { appearance: none; border: 0; border-radius: 10px; background: #3b82f6; color: white; padding: 10px 12px; cursor: pointer; line-height: 1.2; min-width: 0; flex: 0 0 auto; }
+button:hover { filter: brightness(1.06); }
+.out { min-height: 28px; max-height: 260px; overflow: auto; padding: 10px 12px; margin: 0; white-space: pre-wrap; word-break: break-word; }
+.term { min-height: 180px; }
+.selectable { user-select: text; -moz-user-select: text; }

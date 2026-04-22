@@ -1,0 +1,29 @@
+{
+  "manifest_version": 2,
+  "name": "Kestrel Repo Bridge",
+  "version": "0.3.0",
+  "description": "Repo-scoped operator bridge for Kestrel via Firefox native messaging.",
+  "permissions": [
+    "nativeMessaging",
+    "storage",
+    "clipboardWrite"
+  ],
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "repo-bridge@echocorelabs.com"
+    }
+  },
+  "background": {
+    "scripts": [
+      "background.js"
+    ]
+  },
+  "sidebar_action": {
+    "default_title": "Kestrel Repo Bridge",
+    "default_panel": "sidebar/sidebar.html"
+  },
+  "options_ui": {
+    "page": "options/options.html",
+    "open_in_tab": true
+  }
+}
