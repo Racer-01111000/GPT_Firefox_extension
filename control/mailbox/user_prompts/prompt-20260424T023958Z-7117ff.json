@@ -1,0 +1,10 @@
+{
+  "id": "prompt-20260424T023958Z-7117ff",
+  "type": "user_prompt",
+  "prompt": "Hello from bridge.",
+  "meta": {
+    "topic": "Test"
+  },
+  "created_at": "2026-04-24T02:39:58.206534+00:00",
+  "status": "queued"
+}
