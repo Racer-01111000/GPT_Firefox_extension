@@ -1,0 +1,14 @@
+{
+  "id": "helper-worker-test-001",
+  "target": "HOST",
+  "cwd": ".",
+  "command": "python3 -c \"from pathlib import Path; Path('control/outbox/helper-worker-test.txt').write_text('worker helper file test ok\\n', encoding='utf-8')\"",
+  "use_root_helper": false,
+  "approval_mode": "force",
+  "status": "finished",
+  "created_at": "2026-04-24T00:00:00Z",
+  "claimed_at": "2026-04-24T02:54:35.948267+00:00",
+  "claimed_by": "worker-7903",
+  "result_path": "control/outbox/helper-worker-test-001.json",
+  "finished_at": "2026-04-24T02:54:36.031337+00:00"
+}
