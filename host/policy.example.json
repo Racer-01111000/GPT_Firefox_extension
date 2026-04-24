@@ -1,5 +1,5 @@
 {
-  "repo_root": "/home/rick/kestrel-host",
+  "repo_root": "/home/rick/GPT_Firefox_extension",
   "log_path": "~/.local/state/kestrel-repo-bridge/audit.jsonl",
   "protected_paths": [
     ".env",
@@ -15,27 +15,22 @@
     "diff",
     "add",
     "commit",
-    "branch"
+    "branch",
+    "pull",
+    "push",
+    "log"
   ],
   "rules": [
     {
-      "id": "read-docs-src",
+      "id": "read-core-files",
       "enabled": true,
       "action": "read_file",
       "path_globs": [
         "README.md",
-        "docs/**",
-        "runtime/**",
+        "extension/**",
+        "host/**",
         "scripts/**",
-        "training/**",
-        "metadata/**",
-        "evals/**",
-        "prompts/**",
-        "AGENTS.md",
-        "IDENTITY.md",
-        "SOUL.md",
-        "TOOLS.md",
-        "BOOTSTRAP.md"
+        "control/**"
       ],
       "mode": "auto_allow"
     }
@@ -46,9 +41,7 @@
       "enabled": true,
       "action": "run_command",
       "target": "HOST",
-      "cwd_globs": [
-        "."
-      ],
+      "cwd_globs": [".", "extension/**", "host/**", "scripts/**", "control/**"],
       "argv0": "pwd",
       "pattern": "^pwd$",
       "elevate": false,
@@ -59,30 +52,31 @@
       "enabled": true,
       "action": "run_command",
       "target": "HOST",
-      "cwd_globs": [
-        ".",
-        "docs/**",
-        "runtime/**",
-        "scripts/**"
-      ],
+      "cwd_globs": [".", "extension/**", "host/**", "scripts/**", "control/**"],
       "argv0": "ls",
       "pattern": "^ls( .*)?$",
       "elevate": false,
       "mode": "auto_allow"
     },
     {
-      "id": "host-safe-find",
+      "id": "host-safe-grep",
       "enabled": true,
       "action": "run_command",
       "target": "HOST",
-      "cwd_globs": [
-        ".",
-        "docs/**",
-        "runtime/**",
-        "scripts/**"
-      ],
-      "argv0": "find",
-      "pattern": "^find( .*)?$",
+      "cwd_globs": [".", "extension/**", "host/**", "scripts/**", "control/**"],
+      "argv0": "grep",
+      "pattern": "^grep( .*)?$",
+      "elevate": false,
+      "mode": "ask"
+    },
+    {
+      "id": "host-safe-sed",
+      "enabled": true,
+      "action": "run_command",
+      "target": "HOST",
+      "cwd_globs": [".", "extension/**", "host/**", "scripts/**", "control/**"],
+      "argv0": "sed",
+      "pattern": "^sed( .*)?$",
       "elevate": false,
       "mode": "ask"
     },
@@ -91,9 +85,7 @@
       "enabled": true,
       "action": "run_command",
       "target": "HOST",
-      "cwd_globs": [
-        "."
-      ],
+      "cwd_globs": ["."],
       "argv0": "git",
       "pattern": "^git status( .*)?$",
       "elevate": false,
@@ -104,13 +96,33 @@
       "enabled": true,
       "action": "run_command",
       "target": "HOST",
-      "cwd_globs": [
-        "."
-      ],
+      "cwd_globs": ["."],
       "argv0": "git",
       "pattern": "^git diff( .*)?$",
       "elevate": false,
       "mode": "auto_allow"
+    },
+    {
+      "id": "host-safe-git-log",
+      "enabled": true,
+      "action": "run_command",
+      "target": "HOST",
+      "cwd_globs": ["."],
+      "argv0": "git",
+      "pattern": "^git log( .*)?$",
+      "elevate": false,
+      "mode": "auto_allow"
+    },
+    {
+      "id": "host-safe-python",
+      "enabled": true,
+      "action": "run_command",
+      "target": "HOST",
+      "cwd_globs": [".", "host/**", "scripts/**"],
+      "argv0": "python3",
+      "pattern": "^python3( .*)?$",
+      "elevate": false,
+      "mode": "ask"
     }
   ]
 }

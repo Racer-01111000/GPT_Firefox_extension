@@ -18,7 +18,7 @@ import time
 from datetime import datetime, timezone
 from typing import Dict, List, Optional
 
-HOST_VERSION = "0.3.0"
+HOST_VERSION = "0.4.0"
 HOST_NAME = "com.echocore.repo_bridge"
 CONFIG_DIR = os.path.expanduser("~/.config/kestrel-repo-bridge")
 STATE_DIR = os.path.expanduser("~/.local/state/kestrel-repo-bridge")
@@ -54,9 +54,57 @@ def sha256_text(data: str) -> str:
     return hashlib.sha256(data.encode("utf-8")).hexdigest()
 
 
-def default_state(repo_root: str) -> dict:
+def is_pid_alive(pid: Optional[int]) -> bool:
+    if not pid:
+        return False
+    try:
+        os.kill(pid, 0)
+    except OSError:
+        return False
+    return True
+
+
+def repo_control_paths(repo_root: str) -> dict:
+    control_root = os.path.join(repo_root, "control")
     return {
-        "version": 1,
+        "root": control_root,
+        "inbox": os.path.join(control_root, "inbox"),
+        "current": os.path.join(control_root, "inbox", "current.json"),
+        "outbox": os.path.join(control_root, "outbox"),
+        "mailbox": os.path.join(control_root, "mailbox"),
+        "user_prompts": os.path.join(control_root, "mailbox", "user_prompts"),
+        "claims": os.path.join(control_root, "claims"),
+    }
+
+
+def ensure_control_layout(repo_root: str) -> dict:
+    paths = repo_control_paths(repo_root)
+    for key in ("root", "inbox", "outbox", "mailbox", "user_prompts", "claims"):
+        os.makedirs(paths[key], exist_ok=True)
+    return paths
+
+
+def git_run(repo_root: str, args: List[str], check: bool = False) -> subprocess.CompletedProcess:
+    proc = subprocess.run(
+        ["git", "-C", repo_root, *args],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if check and proc.returncode != 0:
+        raise HostError(
+            "git_failed",
+            f"git {' '.join(args)} failed",
+            {"stdout": proc.stdout, "stderr": proc.stderr, "returncode": proc.returncode},
+        )
+    return proc
+
+
+def default_state(repo_root: str) -> dict:
+    worker_log_path = os.path.join(STATE_DIR, "control-worker.log")
+    worker_pid_path = os.path.join(STATE_DIR, "control-worker.pid")
+    return {
+        "version": 2,
         "repo_root": repo_root,
         "memory": {
             "kv": {
@@ -101,6 +149,19 @@ def default_state(repo_root: str) -> dict:
                 }
             }
         },
+        "control": {
+            "enabled": True,
+            "remote": "origin",
+            "branch": "main",
+            "poll_interval_seconds": 10,
+            "worker_pid": None,
+            "worker_pid_path": worker_pid_path,
+            "worker_log_path": worker_log_path,
+            "worker_started_at": None,
+            "last_sync_at": None,
+            "last_prompt_id": None,
+            "last_result_id": None
+        },
         "recent_commands": []
     }
 
@@ -116,7 +177,7 @@ def load_policy() -> dict:
     log_path = policy.get("log_path", os.path.join(STATE_DIR, "audit.jsonl"))
     policy["log_path"] = expand_path(log_path)
     policy.setdefault("protected_paths", [])
-    policy.setdefault("allowed_git_subcommands", ["status", "diff", "add", "commit"])
+    policy.setdefault("allowed_git_subcommands", ["status", "diff", "add", "commit", "branch"])
     policy.setdefault("rules", [])
     policy.setdefault("command_rules", [])
     return policy
@@ -133,22 +194,29 @@ def ensure_repo(policy: dict) -> str:
 
 def load_state(repo_root: str) -> dict:
     path = expand_path(DEFAULT_STATE_PATH)
+    defaults = default_state(repo_root)
     if not os.path.exists(path):
-        state = default_state(repo_root)
+        state = defaults
         state["_state_path"] = path
         save_state(state)
         return state
     with open(path, "r", encoding="utf-8") as handle:
         state = json.load(handle)
-    state.setdefault("version", 1)
-    state.setdefault("repo_root", repo_root)
-    state.setdefault("memory", {"kv": {}, "notes": []})
+    state.setdefault("version", defaults["version"])
+    state["repo_root"] = repo_root
+    state.setdefault("memory", defaults["memory"])
     state["memory"].setdefault("kv", {})
     state["memory"].setdefault("notes", [])
-    defaults = default_state(repo_root)["targets"]
-    state.setdefault("targets", defaults)
-    for name, entry in defaults.items():
+    state["memory"]["kv"].setdefault("canonical_repo", repo_root)
+    state["memory"]["kv"].setdefault("bridge_goal", defaults["memory"]["kv"]["bridge_goal"])
+    state.setdefault("targets", defaults["targets"])
+    for name, entry in defaults["targets"].items():
         state["targets"].setdefault(name, entry)
+        if "root_helper" in entry:
+            state["targets"][name].setdefault("root_helper", entry["root_helper"])
+    state.setdefault("control", defaults["control"])
+    for key, value in defaults["control"].items():
+        state["control"].setdefault(key, value)
     state.setdefault("recent_commands", [])
     state["_state_path"] = path
     return state
@@ -236,7 +304,16 @@ def parse_patch_summary(patch: str, repo_root: str) -> dict:
         if m:
             old_path = m.group(1)
             new_path = m.group(2)
-            current = {"old_path": old_path, "new_path": new_path, "display_path": new_path, "created": False, "deleted": False, "renamed": False, "added": 0, "deleted_lines": 0}
+            current = {
+                "old_path": old_path,
+                "new_path": new_path,
+                "display_path": new_path,
+                "created": False,
+                "deleted": False,
+                "renamed": False,
+                "added": 0,
+                "deleted_lines": 0,
+            }
             files.append(current)
             continue
         if current is None:
@@ -376,9 +453,8 @@ def run_git(repo_root: str, args: List[str], policy: dict) -> dict:
     subcommand = args[0]
     if subcommand not in policy.get("allowed_git_subcommands", []):
         raise HostError("git_forbidden", f"Git subcommand not allowed: {subcommand}")
-    cmd = ["git", "-C", repo_root] + args
-    proc = subprocess.run(cmd, capture_output=True, text=True, check=False)
-    return {"command": cmd, "returncode": proc.returncode, "stdout": proc.stdout, "stderr": proc.stderr}
+    proc = subprocess.run(["git", "-C", repo_root, *args], capture_output=True, text=True, check=False)
+    return {"command": ["git", "-C", repo_root, *args], "returncode": proc.returncode, "stdout": proc.stdout, "stderr": proc.stderr}
 
 
 def git_status(repo_root: str) -> dict:
@@ -428,11 +504,33 @@ def append_command_rule(policy: dict, rule: dict) -> None:
 
 
 def make_proposed_rule(summary: dict) -> dict:
-    return {"id": f"auto-{secrets.token_hex(4)}", "enabled": True, "action": "apply_patch", "path_globs": summary["paths"], "max_files": summary["files"], "max_added_lines": max(summary["added_lines"], 1), "max_deleted_lines": summary["deleted_lines"], "allow_create": summary["has_create"], "allow_delete": False, "allow_rename": False, "mode": "auto_allow"}
+    return {
+        "id": f"auto-{secrets.token_hex(4)}",
+        "enabled": True,
+        "action": "apply_patch",
+        "path_globs": summary["paths"],
+        "max_files": summary["files"],
+        "max_added_lines": max(summary["added_lines"], 1),
+        "max_deleted_lines": summary["deleted_lines"],
+        "allow_create": summary["has_create"],
+        "allow_delete": False,
+        "allow_rename": False,
+        "mode": "auto_allow",
+    }
 
 
 def make_proposed_command_rule(summary: dict) -> dict:
-    return {"id": f"cmd-auto-{secrets.token_hex(4)}", "enabled": True, "action": "run_command", "target": summary["target"], "cwd_globs": [summary["cwd"]], "argv0": summary["argv0"], "pattern": f"^{re.escape(summary['command'].strip())}$", "elevate": bool(summary.get("elevate", False)), "mode": "auto_allow"}
+    return {
+        "id": f"cmd-auto-{secrets.token_hex(4)}",
+        "enabled": True,
+        "action": "run_command",
+        "target": summary["target"],
+        "cwd_globs": [summary["cwd"]],
+        "argv0": summary["argv0"],
+        "pattern": f"^{re.escape(summary['command'].strip())}$",
+        "elevate": bool(summary.get("elevate", False)),
+        "mode": "auto_allow",
+    }
 
 
 def get_audit_tail(policy: dict, lines: int) -> dict:
@@ -473,7 +571,16 @@ def summarize_command(command: str, target: str, cwd: str, elevate: bool) -> dic
         raise HostError("bad_command", f"Unable to parse command: {exc}")
     if not argv:
         raise HostError("empty_command", "Command is empty.")
-    return {"action": "run_command", "target": target, "command": command, "argv0": argv[0], "argv": argv, "cwd": cwd, "elevate": elevate, "command_sha256": sha256_text(command)}
+    return {
+        "action": "run_command",
+        "target": target,
+        "command": command,
+        "argv0": argv[0],
+        "argv": argv,
+        "cwd": cwd,
+        "elevate": elevate,
+        "command_sha256": sha256_text(command),
+    }
 
 
 def select_command_rule(summary: dict, policy: dict) -> Optional[dict]:
@@ -576,17 +683,53 @@ def start_target_command(repo_root: str, policy: dict, state: dict, target_name:
     if not rule or rule.get("mode") == "ask":
         token = secrets.token_urlsafe(16)
         proposed_rule = make_proposed_command_rule(summary)
-        PENDING_REQUESTS[token] = {"kind": "command", "target": target_name, "command": command, "cwd": display_cwd, "elevate": elevate, "summary": summary, "proposed_rule": proposed_rule}
-        return {"ok": False, "error": {"code": "approval_required", "message": f"Approval required for {target_name} command: {command}", "decision_token": token, "summary": summary, "proposed_rule": proposed_rule}}
+        PENDING_REQUESTS[token] = {
+            "kind": "command",
+            "target": target_name,
+            "command": command,
+            "cwd": display_cwd,
+            "elevate": elevate,
+            "summary": summary,
+            "proposed_rule": proposed_rule,
+        }
+        return {
+            "ok": False,
+            "error": {
+                "code": "approval_required",
+                "message": f"Approval required for {target_name} command: {command}",
+                "decision_token": token,
+                "summary": summary,
+                "proposed_rule": proposed_rule,
+            },
+        }
     master_fd, slave_fd = pty.openpty()
     env = os.environ.copy()
     env["TERM"] = env.get("TERM", "xterm-256color")
     env["PS1"] = f"({target_name.lower()}) \\w $ "
-    proc = subprocess.Popen(popen_cmd, cwd=abs_cwd, stdin=slave_fd, stdout=slave_fd, stderr=slave_fd, start_new_session=True, env=env, text=False, close_fds=True)
+    proc = subprocess.Popen(
+        popen_cmd,
+        cwd=abs_cwd,
+        stdin=slave_fd,
+        stdout=slave_fd,
+        stderr=slave_fd,
+        start_new_session=True,
+        env=env,
+        text=False,
+        close_fds=True,
+    )
     os.close(slave_fd)
     make_nonblocking(master_fd)
     session_id = secrets.token_urlsafe(12)
-    TERMINAL_SESSIONS[session_id] = {"id": session_id, "proc": proc, "master_fd": master_fd, "target": target_name, "command": command, "cwd": display_cwd, "started_at": utc_now(), "closed": False}
+    TERMINAL_SESSIONS[session_id] = {
+        "id": session_id,
+        "proc": proc,
+        "master_fd": master_fd,
+        "target": target_name,
+        "command": command,
+        "cwd": display_cwd,
+        "started_at": utc_now(),
+        "closed": False,
+    }
     audit(policy, {"action": "run_target_command", "target": target_name, "command": command, "cwd": display_cwd, "elevate": elevate, "result": "started", "session_id": session_id, "mode": rule.get("mode", "auto_allow")})
     record_recent_command(state, target_name, display_cwd, command, elevate)
     initial = drain_terminal_output(session_id)
@@ -659,6 +802,145 @@ def list_targets(state: dict) -> dict:
     return state.get("targets", {})
 
 
+def sync_control_commit(repo_root: str, state: dict, paths: List[str], commit_message: str) -> dict:
+    control_cfg = state.get("control", {})
+    rel_paths = [os.path.relpath(path, repo_root) for path in paths]
+
+    git_run(repo_root, ["add", *rel_paths], check=True)
+    diff = git_run(repo_root, ["diff", "--cached", "--name-only"], check=True)
+    changed = [line for line in diff.stdout.splitlines() if line.strip()]
+
+    if not changed:
+        return {"status": "no_changes", "changed": []}
+
+    git_run(repo_root, ["commit", "-m", commit_message], check=True)
+
+    control_cfg["last_sync_at"] = utc_now()
+    save_state(state)
+
+    return {
+        "status": "committed_local_only",
+        "changed": changed,
+        "push": "skipped_by_policy"
+    }
+
+
+def worker_status(state: dict) -> dict:
+    control_cfg = state.get("control", {})
+    pid = control_cfg.get("worker_pid")
+    pid_path = expand_path(control_cfg.get("worker_pid_path", os.path.join(STATE_DIR, "control-worker.pid")))
+    log_path = expand_path(control_cfg.get("worker_log_path", os.path.join(STATE_DIR, "control-worker.log")))
+    if not pid and os.path.exists(pid_path):
+        try:
+            pid = int(pathlib.Path(pid_path).read_text(encoding="utf-8").strip())
+        except Exception:
+            pid = None
+    alive = is_pid_alive(pid)
+    return {
+        "running": alive,
+        "pid": pid,
+        "pid_path": pid_path,
+        "log_path": log_path,
+        "started_at": control_cfg.get("worker_started_at"),
+        "poll_interval_seconds": control_cfg.get("poll_interval_seconds", 10),
+        "last_sync_at": control_cfg.get("last_sync_at"),
+    }
+
+
+def start_control_worker(repo_root: str, state: dict) -> dict:
+    status = worker_status(state)
+    if status["running"]:
+        return status
+    control_cfg = state.setdefault("control", {})
+    log_path = expand_path(control_cfg.get("worker_log_path", os.path.join(STATE_DIR, "control-worker.log")))
+    pid_path = expand_path(control_cfg.get("worker_pid_path", os.path.join(STATE_DIR, "control-worker.pid")))
+    ensure_parent(log_path)
+    worker_path = os.path.join(os.path.dirname(__file__), "control_worker.py")
+    if not os.path.exists(worker_path):
+        raise HostError("missing_worker", f"Control worker not found: {worker_path}")
+    log_handle = open(log_path, "ab")
+    proc = subprocess.Popen(
+        [sys.executable, worker_path, "--repo-root", repo_root, "--state-path", expand_path(state.get("_state_path", DEFAULT_STATE_PATH)), "--policy-path", expand_path(DEFAULT_POLICY_PATH)],
+        stdin=subprocess.DEVNULL,
+        stdout=log_handle,
+        stderr=log_handle,
+        start_new_session=True,
+        close_fds=True,
+    )
+    pathlib.Path(pid_path).write_text(str(proc.pid) + "\n", encoding="utf-8")
+    control_cfg["worker_pid"] = proc.pid
+    control_cfg["worker_started_at"] = utc_now()
+    save_state(state)
+    return worker_status(state)
+
+
+def stop_control_worker(state: dict) -> dict:
+    status = worker_status(state)
+    pid = status.get("pid")
+    if pid and is_pid_alive(pid):
+        try:
+            os.kill(pid, signal.SIGTERM)
+        except ProcessLookupError:
+            pass
+        time.sleep(0.2)
+        if is_pid_alive(pid):
+            try:
+                os.kill(pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+    control_cfg = state.setdefault("control", {})
+    pid_path = expand_path(control_cfg.get("worker_pid_path", os.path.join(STATE_DIR, "control-worker.pid")))
+    if os.path.exists(pid_path):
+        try:
+            os.unlink(pid_path)
+        except OSError:
+            pass
+    control_cfg["worker_pid"] = None
+    save_state(state)
+    return worker_status(state)
+
+
+def worker_run_once(repo_root: str, state: dict) -> dict:
+    worker_path = os.path.join(os.path.dirname(__file__), "control_worker.py")
+    if not os.path.exists(worker_path):
+        raise HostError("missing_worker", f"Control worker not found: {worker_path}")
+    proc = subprocess.run(
+        [sys.executable, worker_path, "--once", "--repo-root", repo_root, "--state-path", expand_path(state.get("_state_path", DEFAULT_STATE_PATH)), "--policy-path", expand_path(DEFAULT_POLICY_PATH)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    return {"returncode": proc.returncode, "stdout": proc.stdout, "stderr": proc.stderr}
+
+
+def submit_prompt(repo_root: str, state: dict, prompt_text: str, meta: Optional[dict] = None) -> dict:
+    prompt_text = prompt_text.strip()
+    if not prompt_text:
+        raise HostError("empty_prompt", "Prompt is empty.")
+    paths = ensure_control_layout(repo_root)
+    prompt_id = f"prompt-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}-{secrets.token_hex(3)}"
+    payload = {
+        "id": prompt_id,
+        "type": "user_prompt",
+        "prompt": prompt_text,
+        "meta": meta or {},
+        "created_at": utc_now(),
+        "status": "queued",
+    }
+    prompt_path = os.path.join(paths["user_prompts"], f"{prompt_id}.json")
+    with open(prompt_path, "w", encoding="utf-8") as handle:
+        json.dump(payload, handle, indent=2)
+        handle.write("\n")
+    state.setdefault("control", {})["last_prompt_id"] = prompt_id
+    save_state(state)
+    sync = {"status": "local_only"}
+    try:
+        sync = sync_control_commit(repo_root, state, [prompt_path], f"Queue user prompt {prompt_id}")
+    except HostError as exc:
+        sync = {"status": "local_only", "error": {"code": exc.code, "message": exc.message, "details": exc.details}}
+    return {"prompt_id": prompt_id, "path": os.path.relpath(prompt_path, repo_root), "sync": sync}
+
+
 def handle_request(message: dict) -> dict:
     reap_finished_sessions()
     policy = load_policy()
@@ -679,6 +961,24 @@ def handle_request(message: dict) -> dict:
         return {"ok": True, "data": result}
     if action == "memory_get_all":
         return {"ok": True, "data": memory_get_all(state)}
+    if action == "get_worker_status":
+        return {"ok": True, "data": worker_status(state)}
+    if action == "start_control_worker":
+        result = start_control_worker(repo_root, state)
+        audit(policy, {"action": action, "result": "ok", "worker": result})
+        return {"ok": True, "data": result}
+    if action == "stop_control_worker":
+        result = stop_control_worker(state)
+        audit(policy, {"action": action, "result": "ok", "worker": result})
+        return {"ok": True, "data": result}
+    if action == "worker_run_once":
+        result = worker_run_once(repo_root, state)
+        audit(policy, {"action": action, "result": "ok", "returncode": result["returncode"]})
+        return {"ok": True, "data": result}
+    if action == "submit_prompt":
+        result = submit_prompt(repo_root, state, message.get("prompt", ""), message.get("meta", {}))
+        audit(policy, {"action": action, "result": "ok", "prompt_id": result["prompt_id"]})
+        return {"ok": True, "data": result}
     if action == "list_repo":
         rel_path = message.get("path", ".")
         return {"ok": True, "data": list_repo(repo_root, rel_path, int(message.get("max_depth", 2)), int(message.get("max_entries", 200)))}
