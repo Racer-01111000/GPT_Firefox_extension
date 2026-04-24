@@ -25,6 +25,7 @@
     status: "idle",
     next_state: "Enter a command below",
     last_result: null,
+    session_id: null,
     repair_count: 0,
     git: { eligible: false, recorded: false },
     telegram: { sent: false, awaiting_reply: false },
@@ -260,10 +261,18 @@
         { job_id, target: unpacked.target, record_if_good: !!els.recordIfGoodCheck?.checked }
       ));
 
+      const sessionId =
+        res.raw?.data?.session_id ||
+        res.raw?.data?.id ||
+        res.session_id ||
+        res.id ||
+        null;
+
       Object.assign(currentJob, {
         status: res.status || "succeeded",
-        next_state: res.next_state || (els.recordIfGoodCheck?.checked ? "Ready to record" : "Idle"),
-        last_result: res
+        next_state: sessionId ? "Poll for output" : (res.next_state || (els.recordIfGoodCheck?.checked ? "Ready to record" : "Idle")),
+        last_result: res,
+        session_id: sessionId
       });
 
       currentJob.git.eligible = !!res.git?.eligible || !!els.recordIfGoodCheck?.checked;
@@ -286,7 +295,8 @@
   async function doPollTerminal() {
     if (!currentJob.job_id) return setOut(els.termOut, "No active job.", "is-warn");
     setOut(els.termOut, "Running...", "is-running");
-    const res = requireOk(await hostCall("poll_job", { session_id: currentJob.job_id }, { job_id: currentJob.job_id }));
+    const sessionId = currentJob.session_id || currentJob.job_id;
+    const res = requireOk(await hostCall("poll_job", { session_id: sessionId }, { job_id: currentJob.job_id }));
     Object.assign(currentJob, {
       status: res.status || currentJob.status,
       next_state: res.next_state || currentJob.next_state,
@@ -298,7 +308,8 @@
 
   async function doStopTerminal() {
     if (!currentJob.job_id) return setOut(els.termOut, "No active job to stop.", "is-warn");
-    const res = requireOk(await hostCall("stop_job", { session_id: currentJob.job_id }, { job_id: currentJob.job_id }));
+    const sessionId = currentJob.session_id || currentJob.job_id;
+    const res = requireOk(await hostCall("stop_job", { session_id: sessionId }, { job_id: currentJob.job_id }));
     Object.assign(currentJob, {
       status: res.status || "failed",
       next_state: "Stopped",
