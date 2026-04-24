@@ -1,0 +1,11 @@
+# Runtime control-loop files
+/inbox/*
+/outbox/*
+/claims/*
+/mailbox/user_prompts/*
+
+# Keep directory placeholders
+!/inbox/.gitkeep
+!/outbox/.gitkeep
+!/claims/.gitkeep
+!/mailbox/user_prompts/.gitkeep

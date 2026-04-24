@@ -4,7 +4,7 @@
 
   const els = {
     pingBtn: $("pingBtn"), targetsBtn: $("targetsBtn"), stateBtn: $("stateBtn"), auditBtn: $("auditBtn"), copyStatusBtn: $("copyStatusBtn"), statusOut: $("statusOut"),
-    workerStatusBtn: $("workerStatusBtn"), workerStartBtn: $("workerStartBtn"), workerStopBtn: $("workerStopBtn"), workerRunOnceBtn: $("workerRunOnceBtn"), workerCopyBtn: $("workerCopyBtn"), workerOut: $("workerOut"),
+    workerStatusBtn: $("workerStatusBtn"), workerStartBtn: $("workerStartBtn"), workerStopBtn: $("workerStopBtn"), workerRunOnceBtn: $("workerRunOnceBtn"), workerResetBtn: $("workerResetBtn"), workerCopyBtn: $("workerCopyBtn"), workerOut: $("workerOut"),
     promptTopic: $("promptTopic"), promptText: $("promptText"), promptSendBtn: $("promptSendBtn"), promptClearBtn: $("promptClearBtn"), promptCopyBtn: $("promptCopyBtn"), promptOut: $("promptOut"),
     memoryKey: $("memoryKey"), memoryValue: $("memoryValue"), memorySaveBtn: $("memorySaveBtn"), memoryViewBtn: $("memoryViewBtn"), memoryCopyBtn: $("memoryCopyBtn"), memoryOut: $("memoryOut"),
     readPath: $("readPath"), readBtn: $("readBtn"), readCopyBtn: $("readCopyBtn"), readOut: $("readOut"),
@@ -35,6 +35,15 @@
     if (v == null) return "";
     if (typeof v === "string") return v;
     try { return JSON.stringify(v, null, 2); } catch (_) { return String(v); }
+  }
+
+  function stripAnsi(text) {
+    return String(text || "")
+      .replace(/\x1B\[[0-?]*[ -/]*[@-~]/g, "")
+      .replace(/\u001b\[[0-?]*[ -/]*[@-~]/g, "")
+      .replace(/\\r\\n/g, "\n")
+      .replace(/\\n/g, "\n")
+      .replace(/\r\n/g, "\n");
   }
 
   function nowStamp() {
@@ -90,15 +99,44 @@
     return res;
   }
 
+  function normalizeShellCommandInput(raw) {
+    let cwd = (els.termCwd?.value ?? ".").trim() || ".";
+    let command = raw.trim();
+
+    const cdPrefix = command.match(/^cd\s+([^&]+?)\s*&&\s*(.+)$/s);
+    if (cdPrefix) {
+      const cdPath = cdPrefix[1].trim().replace(/^['"]|['"]$/g, "");
+      command = cdPrefix[2].trim();
+
+      if (cdPath === REPO_ROOT) {
+        cwd = ".";
+      } else if (cdPath.startsWith(REPO_ROOT + "/")) {
+        cwd = cdPath.slice(REPO_ROOT.length + 1) || ".";
+      } else {
+        cwd = cdPath;
+      }
+
+      if (els.termCwd) els.termCwd.value = cwd;
+      if (els.termCmd) els.termCmd.value = command;
+    }
+
+    const safeNoRoot = /^(pwd|ls(\s|$)|git\s+(status|diff|log|branch)(\s|$))/.test(command);
+    if (safeNoRoot && els.elevateCheck?.checked) {
+      els.elevateCheck.checked = false;
+    }
+
+    return {
+      cwd,
+      command,
+      target: els.targetSelect?.value || "HOST",
+      use_root_helper: !!els.elevateCheck?.checked
+    };
+  }
+
   function unpackCommandEnvelope() {
     const raw = (els.termCmd?.value ?? "").trim();
     if (!raw.startsWith("{")) {
-      return {
-        cwd: (els.termCwd?.value ?? ".").trim() || ".",
-        command: raw,
-        target: els.targetSelect?.value || "HOST",
-        use_root_helper: !!els.elevateCheck?.checked
-      };
+      return normalizeShellCommandInput(raw);
     }
 
     try {
@@ -144,9 +182,10 @@
 
   function summarizeData(data) {
     if (data == null) return "";
-    if (typeof data === "string") return data;
-    if (typeof data.stdout === "string" && data.stdout) return data.stdout;
-    if (typeof data.stderr === "string" && data.stderr) return data.stderr;
+    if (typeof data === "string") return stripAnsi(data);
+    if (typeof data.output === "string" && data.output) return stripAnsi(data.output);
+    if (typeof data.stdout === "string" && data.stdout) return stripAnsi(data.stdout);
+    if (typeof data.stderr === "string" && data.stderr) return stripAnsi(data.stderr);
     return JSON.stringify(data, null, 2);
   }
 
@@ -219,6 +258,33 @@
     setOut(outEl, summarizeData(res.raw?.data) || res.stdout || res.summary || safeString(res), "is-success");
   }
 
+
+  async function doResetTask() {
+    setOut(els.workerOut, "Resetting task...", "is-running");
+
+    const res = requireOk(await hostCall("reset_control_loop", {}));
+
+    currentJob.job_id = null;
+    currentJob.session_id = null;
+    currentJob.action = "run_target_command";
+    currentJob.status = "idle";
+    currentJob.next_state = "Enter a command below";
+    currentJob.last_result = null;
+    currentJob.repair_count = 0;
+    currentJob.git = { eligible: false, recorded: false };
+    currentJob.telegram = { sent: false, awaiting_reply: false };
+
+    renderCurrentJob();
+    renderResult({ status: "idle", summary: "No result yet." });
+    renderRepair("idle", "");
+    renderGit({ status: "idle", summary: "No Git action yet.", repo_root: REPO_ROOT });
+
+    setOut(els.termOut, "", "");
+    setOut(els.patchOut, "", "");
+    setOut(els.gitOut, "", "");
+    setOut(els.workerOut, summarizeData(res.raw?.data) || res.stdout || res.summary || safeString(res), "is-success");
+  }
+
   async function doReadFile() {
     const path = (els.readPath?.value ?? "").trim();
     if (!path) return setOut(els.readOut, "Error: Read path is empty.", "is-error");
@@ -242,23 +308,38 @@
     if (!unpacked.command) return setOut(els.termOut, "Command is empty.", "is-error");
 
     const job_id = makeJobId();
+
     Object.assign(currentJob, {
       job_id,
       action: "run_target_command",
       target: unpacked.target,
       status: "running",
       next_state: "Await result",
+      session_id: null,
       git: { eligible: !!els.recordIfGoodCheck?.checked, recorded: false }
     });
 
     renderCurrentJob();
-    renderResult({ status: "running", started_at: nowStamp(), summary: "Running...", stdout: "Running..." });
+    renderResult({
+      status: "running",
+      started_at: nowStamp(),
+      summary: "Running...",
+      stdout: "Running..."
+    });
 
     try {
       const res = requireOk(await hostCall(
         "run_target_command",
-        { cwd: unpacked.cwd, command: unpacked.command, use_root_helper: unpacked.use_root_helper },
-        { job_id, target: unpacked.target, record_if_good: !!els.recordIfGoodCheck?.checked }
+        {
+          cwd: unpacked.cwd,
+          command: unpacked.command,
+          use_root_helper: unpacked.use_root_helper
+        },
+        {
+          job_id,
+          target: unpacked.target,
+          record_if_good: !!els.recordIfGoodCheck?.checked
+        }
       ));
 
       const sessionId =
@@ -270,15 +351,37 @@
 
       Object.assign(currentJob, {
         status: res.status || "succeeded",
-        next_state: sessionId ? "Poll for output" : (res.next_state || (els.recordIfGoodCheck?.checked ? "Ready to record" : "Idle")),
+        next_state: sessionId ? "Auto-polling output" : (res.next_state || "Idle"),
         last_result: res,
         session_id: sessionId
       });
 
       currentJob.git.eligible = !!res.git?.eligible || !!els.recordIfGoodCheck?.checked;
       renderCurrentJob();
-      renderResult(res);
-      renderGit(res);
+
+      if (!sessionId) {
+        renderResult(res);
+        renderGit(res);
+        return;
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 350));
+
+      const polled = requireOk(await hostCall(
+        "poll_job",
+        { session_id: sessionId },
+        { job_id: currentJob.job_id }
+      ));
+
+      Object.assign(currentJob, {
+        status: polled.status || "succeeded",
+        next_state: polled.raw?.data?.done ? "Idle" : "Poll for more output",
+        last_result: polled
+      });
+
+      renderCurrentJob();
+      renderResult(polled);
+      renderGit(polled);
     } catch (err) {
       Object.assign(currentJob, {
         status: "failed",
@@ -287,7 +390,13 @@
       });
 
       renderCurrentJob();
-      renderResult({ status: "failed", started_at: nowStamp(), exit_code: 1, summary: err.message, stderr: err.message });
+      renderResult({
+        status: "failed",
+        started_at: nowStamp(),
+        exit_code: 1,
+        summary: err.message,
+        stderr: err.message
+      });
       renderRepair("failed", err.message);
     }
   }
@@ -371,6 +480,7 @@
   bind(els.workerStartBtn, () => runSimple("worker_start", els.workerOut), els.workerOut);
   bind(els.workerStopBtn, () => runSimple("worker_stop", els.workerOut), els.workerOut);
   bind(els.workerRunOnceBtn, () => runSimple("worker_run_once", els.workerOut), els.workerOut);
+  bind(els.workerResetBtn, doResetTask, els.workerOut);
 
   bind(els.readBtn, doReadFile, els.readOut);
   bind(els.patchBtn, doApplyPatch, els.patchOut);

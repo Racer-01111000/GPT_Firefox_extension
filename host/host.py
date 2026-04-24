@@ -913,6 +913,26 @@ def worker_run_once(repo_root: str, state: dict) -> dict:
     return {"returncode": proc.returncode, "stdout": proc.stdout, "stderr": proc.stderr}
 
 
+def reset_control_loop(repo_root: str, state: dict) -> dict:
+    paths = ensure_control_layout(repo_root)
+    current_path = paths["current"]
+    removed = False
+
+    if os.path.exists(current_path):
+        os.unlink(current_path)
+        removed = True
+
+    state.setdefault("control", {})["last_result_id"] = None
+    save_state(state)
+
+    return {
+        "status": "reset",
+        "removed_current": removed,
+        "current_path": os.path.relpath(current_path, repo_root),
+        "message": "Worker current command cleared. Ready for next task."
+    }
+
+
 def submit_prompt(repo_root: str, state: dict, prompt_text: str, meta: Optional[dict] = None) -> dict:
     prompt_text = prompt_text.strip()
     if not prompt_text:
@@ -974,6 +994,10 @@ def handle_request(message: dict) -> dict:
     if action == "worker_run_once":
         result = worker_run_once(repo_root, state)
         audit(policy, {"action": action, "result": "ok", "returncode": result["returncode"]})
+        return {"ok": True, "data": result}
+    if action == "reset_control_loop":
+        result = reset_control_loop(repo_root, state)
+        audit(policy, {"action": action, "result": "ok", "removed_current": result["removed_current"]})
         return {"ok": True, "data": result}
     if action == "submit_prompt":
         result = submit_prompt(repo_root, state, message.get("prompt", ""), message.get("meta", {}))

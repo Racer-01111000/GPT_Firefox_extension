@@ -135,6 +135,7 @@ function mapActionForHost(action, payload) {
     worker_start: "start_control_worker",
     worker_stop: "stop_control_worker",
     worker_run_once: "worker_run_once",
+    reset_control_loop: "reset_control_loop",
     prompt_mailbox_send: "submit_prompt",
     send_prompt: "submit_prompt",
     memory_save: "memory_set",
