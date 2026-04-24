@@ -1,237 +1,443 @@
-const $ = (id) => document.getElementById(id);
+(function () {
+  const $ = (id) => document.getElementById(id);
+  const REPO_ROOT = "/home/rick/GPT_Firefox_extension";
 
-let currentSessionId = null;
-let pollTimer = null;
+  const els = {
+    pingBtn: $("pingBtn"), targetsBtn: $("targetsBtn"), stateBtn: $("stateBtn"), auditBtn: $("auditBtn"), copyStatusBtn: $("copyStatusBtn"), statusOut: $("statusOut"),
+    workerStatusBtn: $("workerStatusBtn"), workerStartBtn: $("workerStartBtn"), workerStopBtn: $("workerStopBtn"), workerRunOnceBtn: $("workerRunOnceBtn"), workerCopyBtn: $("workerCopyBtn"), workerOut: $("workerOut"),
+    promptTopic: $("promptTopic"), promptText: $("promptText"), promptSendBtn: $("promptSendBtn"), promptClearBtn: $("promptClearBtn"), promptCopyBtn: $("promptCopyBtn"), promptOut: $("promptOut"),
+    memoryKey: $("memoryKey"), memoryValue: $("memoryValue"), memorySaveBtn: $("memorySaveBtn"), memoryViewBtn: $("memoryViewBtn"), memoryCopyBtn: $("memoryCopyBtn"), memoryOut: $("memoryOut"),
+    readPath: $("readPath"), readBtn: $("readBtn"), readCopyBtn: $("readCopyBtn"), readOut: $("readOut"),
+    patchText: $("patchText"), patchBtn: $("patchBtn"), patchCopyBtn: $("patchCopyBtn"), patchOut: $("patchOut"),
+    targetSelect: $("targetSelect"), termCwd: $("termCwd"), termCmd: $("termCmd"), elevateCheck: $("elevateCheck"), termRunBtn: $("termRunBtn"), termPollBtn: $("termPollBtn"), termStopBtn: $("termStopBtn"), termCopyBtn: $("termCopyBtn"), termClearBtn: $("termClearBtn"), termOut: $("termOut"),
+    gitStatusBtn: $("gitStatusBtn"), gitDiffBtn: $("gitDiffBtn"), gitAddBtn: $("gitAddBtn"), gitCommitBtn: $("gitCommitBtn"), gitOut: $("gitOut"),
+    recordIfGoodCheck: $("recordIfGoodCheck"), currentActionName: $("currentActionName"), currentActionTarget: $("currentActionTarget"), currentRepoRoot: $("currentRepoRoot"), currentActionCwd: $("currentActionCwd"), currentActionCommand: $("currentActionCommand"), currentJobStatus: $("currentJobStatus"), currentJobNext: $("currentJobNext"), currentJobId: $("currentJobId"), currentJobBadge: $("currentJobBadge"),
+    resultStatus: $("resultStatus"), resultStarted: $("resultStarted"), resultDuration: $("resultDuration"), resultExitCode: $("resultExitCode"), resultStateBadge: $("resultStateBadge"),
+    repairStatus: $("repairStatus"), repairAttempts: $("repairAttempts"), repairEscalation: $("repairEscalation"), repairStateBadge: $("repairStateBadge"),
+    gitRepoRoot: $("gitRepoRoot"), gitBranchName: $("gitBranchName"), gitTreeStatus: $("gitTreeStatus"), gitRecordBadge: $("gitRecordBadge"),
+  };
 
-async function hostCall(payload) {
-  return browser.runtime.sendMessage({ type: "host_call", payload });
-}
+  const currentJob = {
+    job_id: null,
+    action: "run_target_command",
+    target: "HOST",
+    repo_root: REPO_ROOT,
+    status: "idle",
+    next_state: "Enter a command below",
+    last_result: null,
+    repair_count: 0,
+    git: { eligible: false, recorded: false },
+    telegram: { sent: false, awaiting_reply: false },
+  };
 
-function fmt(obj) {
-  return typeof obj === "string" ? obj : JSON.stringify(obj, null, 2);
-}
-
-function appendTerm(text) {
-  const el = $("termOut");
-  if (!el) return;
-  el.textContent += text;
-  el.scrollTop = el.scrollHeight;
-}
-
-function setTerm(text) {
-  const el = $("termOut");
-  if (!el) return;
-  el.textContent = text;
-  el.scrollTop = el.scrollHeight;
-}
-
-async function ping() {
-  const res = await hostCall({ action: "ping" });
-  $("statusOut").textContent = fmt(res);
-}
-
-async function listTargets() {
-  const res = await hostCall({ action: "list_targets" });
-  $("statusOut").textContent = fmt(res);
-}
-
-async function getState() {
-  const res = await hostCall({ action: "get_state" });
-  $("statusOut").textContent = fmt(res);
-}
-
-async function auditTail() {
-  const res = await hostCall({ action: "get_audit_tail", lines: 20 });
-  $("statusOut").textContent = fmt(res);
-}
-
-async function readFile() {
-  const path = $("readPath").value.trim();
-  const res = await hostCall({ action: "read_file", path });
-  $("readOut").textContent = fmt(res);
-}
-
-async function rememberKeyValue() {
-  const key = $("memoryKey").value.trim();
-  const value = $("memoryValue").value;
-  const res = await hostCall({ action: "memory_set", key, value });
-  $("memoryOut").textContent = fmt(res);
-}
-
-async function viewMemory() {
-  const res = await hostCall({ action: "memory_get_all" });
-  $("memoryOut").textContent = fmt(res);
-}
-
-async function approveDecision(errorObj) {
-  const typed = window.prompt(
-    "Approval required. Type one of: once, session, always, deny",
-    "once"
-  );
-  if (!typed) return null;
-  const decision = typed.trim().toLowerCase();
-  if (!["once", "session", "always", "deny"].includes(decision)) {
-    window.alert("Invalid decision.");
-    return null;
+  function safeString(v) {
+    if (v == null) return "";
+    if (typeof v === "string") return v;
+    try { return JSON.stringify(v, null, 2); } catch (_) { return String(v); }
   }
-  return hostCall({
-    action: "approve_request",
-    decision_token: errorObj.decision_token,
-    decision,
-    rule: errorObj.proposed_rule,
-  });
-}
 
-async function applyPatch() {
-  const patch = $("patchText").value;
-  const res = await hostCall({ action: "apply_patch", patch });
-  if (res && res.ok) {
-    $("patchOut").textContent = fmt(res);
-    return;
+  function nowStamp() {
+    try { return new Date().toLocaleTimeString(); } catch (_) { return "—"; }
   }
-  if (res && res.error && res.error.code === "approval_required") {
-    const decided = await approveDecision(res.error);
-    $("patchOut").textContent = fmt(decided || res);
-    return;
-  }
-  $("patchOut").textContent = fmt(res);
-}
 
-function stopPolling() {
-  if (pollTimer) {
-    clearInterval(pollTimer);
-    pollTimer = null;
+  function makeJobId() {
+    return "job-" + Date.now();
   }
-}
 
-function startPolling(sessionId) {
-  currentSessionId = sessionId;
-  stopPolling();
-  pollTimer = setInterval(pollSession, 800);
-}
-
-async function runCommand() {
-  const target = $("targetSelect").value;
-  const cwd = $("termCwd").value.trim() || ".";
-  const command = $("termCmd").value.trim();
-  const elevate = $("elevateCheck").checked;
-  if (!command) return;
-  const res = await hostCall({ action: "run_target_command", target, cwd, command, elevate });
-  if (res && res.ok && res.data) {
-    setTerm(res.data.initial_output || "");
-    startPolling(res.data.session_id);
-    return;
+  function outputState(status) {
+    return status === "running" || status === "queued" || status === "repairing"
+      ? "is-running"
+      : status === "succeeded" || status === "recorded"
+      ? "is-success"
+      : status === "failed" || status === "needs_user_input" || status === "awaiting_reply"
+      ? "is-error"
+      : "is-warn";
   }
-  if (res && res.error && res.error.code === "approval_required") {
-    const decided = await approveDecision(res.error);
-    if (decided && decided.ok && decided.data) {
-      setTerm(decided.data.initial_output || "");
-      startPolling(decided.data.session_id);
-      return;
+
+  function badgeKind(status) {
+    return status === "running" || status === "queued" || status === "repairing"
+      ? "badge-info"
+      : status === "succeeded" || status === "recorded"
+      ? "badge-ok"
+      : status === "failed" || status === "needs_user_input" || status === "awaiting_reply"
+      ? "badge-error"
+      : "badge-warn";
+  }
+
+  function setOut(el, value, state) {
+    if (!el) return;
+    el.textContent = safeString(value);
+    el.classList.remove("is-running", "is-success", "is-error", "is-warn");
+    if (state) el.classList.add(state);
+  }
+
+  function setBadge(el, text, kind) {
+    if (!el) return;
+    el.textContent = text;
+    el.classList.remove("badge-ok", "badge-warn", "badge-error", "badge-info");
+    if (kind) el.classList.add(kind);
+  }
+
+  function copyText(value) {
+    return navigator.clipboard.writeText(safeString(value || ""));
+  }
+
+  function requireOk(res) {
+    if (!res || res.ok === false) {
+      throw new Error((res && (res.error || res.stderr || res.summary)) || "Broker call failed");
     }
-    appendTerm("\n" + fmt(decided || res) + "\n");
-    return;
-  }
-  appendTerm("\n" + fmt(res) + "\n");
-}
-
-async function pollSession() {
-  if (!currentSessionId) return;
-  const res = await hostCall({ action: "poll_terminal_session", session_id: currentSessionId });
-  if (!res || !res.ok) {
-    appendTerm("\n" + fmt(res) + "\n");
-    stopPolling();
-    return;
-  }
-  const data = res.data || {};
-  if (data.output) appendTerm(data.output);
-  if (data.done) {
-    appendTerm(`\n[session finished: returncode=${data.returncode}]\n`);
-    stopPolling();
-  }
-}
-
-async function stopSession() {
-  if (!currentSessionId) return;
-  const res = await hostCall({ action: "stop_terminal_session", session_id: currentSessionId });
-  appendTerm("\n" + fmt(res) + "\n");
-  stopPolling();
-}
-
-async function copyTermOutput() {
-  const text = $("termOut").textContent || "";
-  try {
-    await navigator.clipboard.writeText(text);
-  } catch (err) {
-    window.alert("Clipboard copy failed.");
-  }
-}
-
-function clearTermOutput() {
-  setTerm("");
-}
-
-$("pingBtn")?.addEventListener("click", ping);
-$("targetsBtn")?.addEventListener("click", listTargets);
-$("stateBtn")?.addEventListener("click", getState);
-$("auditBtn")?.addEventListener("click", auditTail);
-$("readBtn")?.addEventListener("click", readFile);
-$("memorySaveBtn")?.addEventListener("click", rememberKeyValue);
-$("memoryViewBtn")?.addEventListener("click", viewMemory);
-$("patchBtn")?.addEventListener("click", applyPatch);
-$("termRunBtn")?.addEventListener("click", runCommand);
-$("termPollBtn")?.addEventListener("click", pollSession);
-$("termStopBtn")?.addEventListener("click", stopSession);
-$("termCopyBtn")?.addEventListener("click", copyTermOutput);
-$("termClearBtn")?.addEventListener("click", clearTermOutput);
-
-ping();
-
-
-(function installCopyHelpers() {
-  function makeSelectable(id) {
-    const el = document.getElementById(id);
-    if (!el) return;
-    el.style.userSelect = "text";
-    el.style.MozUserSelect = "text";
-    el.style.webkitUserSelect = "text";
-    el.style.cursor = "text";
+    return res;
   }
 
-  async function copyFrom(id) {
-    const el = document.getElementById(id);
-    if (!el) return;
-    const text = el.textContent || "";
+  function unpackCommandEnvelope() {
+    const raw = (els.termCmd?.value ?? "").trim();
+    if (!raw.startsWith("{")) {
+      return {
+        cwd: (els.termCwd?.value ?? ".").trim() || ".",
+        command: raw,
+        target: els.targetSelect?.value || "HOST",
+        use_root_helper: !!els.elevateCheck?.checked
+      };
+    }
+
     try {
-      await navigator.clipboard.writeText(text);
+      const parsed = JSON.parse(raw);
+      const payload = parsed.payload || {};
+      const command = typeof payload.command === "string" ? payload.command.trim() : "";
+      const cwd = typeof payload.cwd === "string" ? payload.cwd.trim() || "." : ((els.termCwd?.value ?? ".").trim() || ".");
+      const target = typeof parsed.target === "string" ? parsed.target : (els.targetSelect?.value || "HOST");
+      if (command) {
+        if (els.termCwd) els.termCwd.value = cwd;
+        if (els.targetSelect) els.targetSelect.value = target;
+        if (els.termCmd) els.termCmd.value = command;
+        return { cwd, command, target, use_root_helper: !!els.elevateCheck?.checked };
+      }
+    } catch (_) {}
+
+    return {
+      cwd: (els.termCwd?.value ?? ".").trim() || ".",
+      command: raw,
+      target: els.targetSelect?.value || "HOST",
+      use_root_helper: !!els.elevateCheck?.checked
+    };
+  }
+
+  async function hostCall(action, payload = {}, options = {}) {
+    const envelope = {
+      job_id: options.job_id || currentJob.job_id || makeJobId(),
+      intent: options.intent || "project_scoped_action",
+      target: options.target || currentJob.target || "HOST",
+      repo_root: options.repo_root || currentJob.repo_root || REPO_ROOT,
+      action,
+      requires_approval: options.requires_approval ?? false,
+      record_if_good: options.record_if_good ?? !!els.recordIfGoodCheck?.checked,
+      payload,
+    };
+
+    if (!(typeof browser !== "undefined" && browser.runtime && typeof browser.runtime.sendMessage === "function")) {
+      throw new Error("browser.runtime.sendMessage is unavailable. Background/bridge is not wired.");
+    }
+
+    return browser.runtime.sendMessage(envelope);
+  }
+
+  function summarizeData(data) {
+    if (data == null) return "";
+    if (typeof data === "string") return data;
+    if (typeof data.stdout === "string" && data.stdout) return data.stdout;
+    if (typeof data.stderr === "string" && data.stderr) return data.stderr;
+    return JSON.stringify(data, null, 2);
+  }
+
+  function renderCurrentJob() {
+    els.currentActionName && (els.currentActionName.textContent = currentJob.action || "run_target_command");
+    els.currentActionTarget && (els.currentActionTarget.textContent = currentJob.target || "HOST");
+    els.currentRepoRoot && (els.currentRepoRoot.textContent = currentJob.repo_root || REPO_ROOT);
+    els.currentActionCwd && (els.currentActionCwd.textContent = (els.termCwd?.value ?? ".").trim() || ".");
+    els.currentActionCommand && (els.currentActionCommand.textContent = (els.termCmd?.value ?? "").trim() || "—");
+    els.currentJobStatus && (els.currentJobStatus.textContent = currentJob.status || "idle");
+    els.currentJobNext && (els.currentJobNext.textContent = currentJob.next_state || "Enter a command below");
+    els.currentJobId && (els.currentJobId.textContent = currentJob.job_id || "—");
+    setBadge(els.currentJobBadge, currentJob.status || "idle", badgeKind(currentJob.status));
+  }
+
+  function renderResult(res) {
+    const status = res?.status || "idle";
+    els.resultStatus && (els.resultStatus.textContent = status);
+    els.resultStarted && (els.resultStarted.textContent = res?.started_at || "—");
+    els.resultDuration && (els.resultDuration.textContent = res?.duration_ms != null ? `${res.duration_ms} ms` : "—");
+    els.resultExitCode && (els.resultExitCode.textContent = res?.exit_code != null ? String(res.exit_code) : "—");
+    setBadge(els.resultStateBadge, status, badgeKind(status));
+
+    const body =
+      res?.stdout ||
+      summarizeData(res?.raw?.data) ||
+      res?.summary ||
+      res?.stderr ||
+      safeString(res || "");
+
+    setOut(els.termOut, body, outputState(status));
+  }
+
+  function renderRepair(status = "idle", note = "") {
+    els.repairStatus && (els.repairStatus.textContent = status);
+    els.repairAttempts && (els.repairAttempts.textContent = String(currentJob.repair_count || 0));
+    els.repairEscalation && (els.repairEscalation.textContent = currentJob.telegram.awaiting_reply ? "awaiting_reply" : "none");
+    setBadge(els.repairStateBadge, status, badgeKind(status));
+    if (note) setOut(els.patchOut, note, outputState(status));
+  }
+
+  function renderGit(res) {
+    if (!res) return;
+
+    els.gitRepoRoot && (els.gitRepoRoot.textContent = res.repo_root || currentJob.repo_root || REPO_ROOT);
+    if (els.gitTreeStatus) {
+      els.gitTreeStatus.textContent =
+        res.summary ||
+        res.raw?.data?.branch ||
+        "ok";
+    }
+
+    const body =
+      res.stdout ||
+      summarizeData(res.raw?.data) ||
+      res.summary ||
+      res.stderr ||
+      safeString(res);
+
+    setOut(els.gitOut, body, outputState(res.status || "idle"));
+
+    if (res.status === "recorded") setBadge(els.gitRecordBadge, "Recorded", "badge-ok");
+    else if (currentJob.git.eligible) setBadge(els.gitRecordBadge, "Eligible", "badge-info");
+    else setBadge(els.gitRecordBadge, "Not Recorded", "badge-warn");
+  }
+
+  async function runSimple(action, outEl) {
+    setOut(outEl, "Running...", "is-running");
+    const res = requireOk(await hostCall(action, {}));
+    setOut(outEl, summarizeData(res.raw?.data) || res.stdout || res.summary || safeString(res), "is-success");
+  }
+
+  async function doReadFile() {
+    const path = (els.readPath?.value ?? "").trim();
+    if (!path) return setOut(els.readOut, "Error: Read path is empty.", "is-error");
+    setOut(els.readOut, "Running...", "is-running");
+    const res = requireOk(await hostCall("read_repo_file", { path }));
+    setOut(els.readOut, summarizeData(res.raw?.data) || res.stdout || res.summary || safeString(res), "is-success");
+  }
+
+  async function doApplyPatch() {
+    const patch = (els.patchText?.value ?? "").trim();
+    if (!patch) return setOut(els.patchOut, "Patch text is empty.", "is-error");
+    currentJob.repair_count += 1;
+    renderRepair("repairing", "Running...");
+    const res = requireOk(await hostCall("apply_repo_patch", { patch }));
+    setOut(els.patchOut, summarizeData(res.raw?.data) || res.stdout || res.summary || safeString(res), "is-success");
+    renderRepair("succeeded", res.summary || "Repair applied");
+  }
+
+  async function doRunTerminal() {
+    const unpacked = unpackCommandEnvelope();
+    if (!unpacked.command) return setOut(els.termOut, "Command is empty.", "is-error");
+
+    const job_id = makeJobId();
+    Object.assign(currentJob, {
+      job_id,
+      action: "run_target_command",
+      target: unpacked.target,
+      status: "running",
+      next_state: "Await result",
+      git: { eligible: !!els.recordIfGoodCheck?.checked, recorded: false }
+    });
+
+    renderCurrentJob();
+    renderResult({ status: "running", started_at: nowStamp(), summary: "Running...", stdout: "Running..." });
+
+    try {
+      const res = requireOk(await hostCall(
+        "run_target_command",
+        { cwd: unpacked.cwd, command: unpacked.command, use_root_helper: unpacked.use_root_helper },
+        { job_id, target: unpacked.target, record_if_good: !!els.recordIfGoodCheck?.checked }
+      ));
+
+      Object.assign(currentJob, {
+        status: res.status || "succeeded",
+        next_state: res.next_state || (els.recordIfGoodCheck?.checked ? "Ready to record" : "Idle"),
+        last_result: res
+      });
+
+      currentJob.git.eligible = !!res.git?.eligible || !!els.recordIfGoodCheck?.checked;
+      renderCurrentJob();
+      renderResult(res);
+      renderGit(res);
     } catch (err) {
-      window.alert("Clipboard copy failed.");
+      Object.assign(currentJob, {
+        status: "failed",
+        next_state: "Repair or ask user",
+        last_result: { error: err.message }
+      });
+
+      renderCurrentJob();
+      renderResult({ status: "failed", started_at: nowStamp(), exit_code: 1, summary: err.message, stderr: err.message });
+      renderRepair("failed", err.message);
     }
   }
 
-  function addButtonRowButton(row, id, label, handler) {
-    if (!row || document.getElementById(id)) return;
-    const btn = document.createElement("button");
-    btn.id = id;
-    btn.textContent = label;
-    btn.addEventListener("click", handler);
-    row.appendChild(btn);
+  async function doPollTerminal() {
+    if (!currentJob.job_id) return setOut(els.termOut, "No active job.", "is-warn");
+    setOut(els.termOut, "Running...", "is-running");
+    const res = requireOk(await hostCall("poll_job", { session_id: currentJob.job_id }, { job_id: currentJob.job_id }));
+    Object.assign(currentJob, {
+      status: res.status || currentJob.status,
+      next_state: res.next_state || currentJob.next_state,
+      last_result: res
+    });
+    renderCurrentJob();
+    renderResult(res);
   }
 
-  function install() {
-    makeSelectable("statusOut");
-    makeSelectable("readOut");
-    makeSelectable("patchOut");
-    makeSelectable("memoryOut");
-    makeSelectable("termOut");
-
-    const firstRow = document.querySelector(".card .row");
-    addButtonRowButton(firstRow, "copyStatusBtn", "Copy status", () => copyFrom("statusOut"));
+  async function doStopTerminal() {
+    if (!currentJob.job_id) return setOut(els.termOut, "No active job to stop.", "is-warn");
+    const res = requireOk(await hostCall("stop_job", { session_id: currentJob.job_id }, { job_id: currentJob.job_id }));
+    Object.assign(currentJob, {
+      status: res.status || "failed",
+      next_state: "Stopped",
+      last_result: res
+    });
+    renderCurrentJob();
+    renderResult(res);
   }
 
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", install);
-  } else {
-    install();
+  async function doGitAction(action) {
+    setOut(els.gitOut, "Running...", "is-running");
+
+    let payload;
+    if (action === "git_status") {
+      payload = {};
+    } else if (action === "git_diff") {
+      payload = { args: ["diff"] };
+    } else if (action === "git_add") {
+      payload = { args: ["add", "."] };
+    } else if (action === "git_commit") {
+      payload = { args: ["commit", "-m", "bridge: record approved change"] };
+    } else {
+      payload = {};
+    }
+
+    const res = requireOk(await hostCall(action, payload, {
+      target: els.targetSelect?.value || "HOST",
+      record_if_good: !!els.recordIfGoodCheck?.checked
+    }));
+
+    if (action === "git_commit") {
+      currentJob.git.recorded = true;
+      currentJob.status = "recorded";
+      currentJob.next_state = "Recorded in Git";
+      renderCurrentJob();
+      res.status = res.status || "recorded";
+    }
+
+    renderGit(res);
   }
+
+  function bind(btn, fn, outEl) {
+    if (!btn) return;
+    btn.addEventListener("click", async () => {
+      try { await fn(); }
+      catch (err) {
+        console.error(err);
+        setOut(outEl || els.statusOut || els.termOut, err?.message || String(err), "is-error");
+      }
+    });
+  }
+
+  bind(els.pingBtn, () => runSimple("ping_host", els.statusOut), els.statusOut);
+  bind(els.stateBtn, () => runSimple("state", els.statusOut), els.statusOut);
+  bind(els.targetsBtn, () => runSimple("targets", els.statusOut), els.statusOut);
+  bind(els.auditBtn, () => runSimple("audit_tail", els.statusOut), els.statusOut);
+
+  bind(els.workerStatusBtn, () => runSimple("worker_status", els.workerOut), els.workerOut);
+  bind(els.workerStartBtn, () => runSimple("worker_start", els.workerOut), els.workerOut);
+  bind(els.workerStopBtn, () => runSimple("worker_stop", els.workerOut), els.workerOut);
+  bind(els.workerRunOnceBtn, () => runSimple("worker_run_once", els.workerOut), els.workerOut);
+
+  bind(els.readBtn, doReadFile, els.readOut);
+  bind(els.patchBtn, doApplyPatch, els.patchOut);
+  bind(els.termRunBtn, doRunTerminal, els.termOut);
+  bind(els.termPollBtn, doPollTerminal, els.termOut);
+  bind(els.termStopBtn, doStopTerminal, els.termOut);
+
+  bind(els.gitStatusBtn, () => doGitAction("git_status"), els.gitOut);
+  bind(els.gitDiffBtn, () => doGitAction("git_diff"), els.gitOut);
+  bind(els.gitAddBtn, () => doGitAction("git_add"), els.gitOut);
+  bind(els.gitCommitBtn, () => doGitAction("git_commit"), els.gitOut);
+
+  els.promptSendBtn && els.promptSendBtn.addEventListener("click", async () => {
+    try {
+      const prompt = (els.promptText?.value ?? "").trim();
+      const topic = (els.promptTopic?.value ?? "").trim();
+      if (!prompt) return setOut(els.promptOut, "Prompt is empty.", "is-error");
+      setOut(els.promptOut, "Running...", "is-running");
+      const res = requireOk(await hostCall("prompt_mailbox_send", {
+        prompt,
+        meta: topic ? { topic } : {}
+      }));
+      setOut(els.promptOut, summarizeData(res.raw?.data) || res.stdout || res.summary || safeString(res), "is-success");
+    } catch (err) {
+      setOut(els.promptOut, err.message, "is-error");
+    }
+  });
+
+  els.promptClearBtn && els.promptClearBtn.addEventListener("click", () => {
+    els.promptTopic && (els.promptTopic.value = "");
+    els.promptText && (els.promptText.value = "");
+    setOut(els.promptOut, "Prompt cleared.", "is-success");
+  });
+
+  els.promptCopyBtn && els.promptCopyBtn.addEventListener("click", () => copyText(els.promptOut?.textContent || ""));
+
+  els.memorySaveBtn && els.memorySaveBtn.addEventListener("click", async () => {
+    try {
+      const key = (els.memoryKey?.value ?? "").trim();
+      const value = (els.memoryValue?.value ?? "").trim();
+      if (!key) return setOut(els.memoryOut, "Memory key is empty.", "is-error");
+      setOut(els.memoryOut, "Running...", "is-running");
+      const res = requireOk(await hostCall("memory_save", { key, value }));
+      setOut(els.memoryOut, summarizeData(res.raw?.data) || res.stdout || res.summary || safeString(res), "is-success");
+    } catch (err) {
+      setOut(els.memoryOut, err.message, "is-error");
+    }
+  });
+
+  els.memoryViewBtn && els.memoryViewBtn.addEventListener("click", async () => {
+    try {
+      setOut(els.memoryOut, "Running...", "is-running");
+      const res = requireOk(await hostCall("memory_view", {}));
+      setOut(els.memoryOut, summarizeData(res.raw?.data) || res.stdout || res.summary || safeString(res), "is-success");
+    } catch (err) {
+      setOut(els.memoryOut, err.message, "is-error");
+    }
+  });
+
+  els.memoryCopyBtn && els.memoryCopyBtn.addEventListener("click", () => copyText(els.memoryOut?.textContent || ""));
+
+  els.copyStatusBtn && els.copyStatusBtn.addEventListener("click", () => copyText(els.statusOut?.textContent || ""));
+  els.workerCopyBtn && els.workerCopyBtn.addEventListener("click", () => copyText(els.workerOut?.textContent || ""));
+  els.readCopyBtn && els.readCopyBtn.addEventListener("click", () => copyText(els.readOut?.textContent || ""));
+  els.patchCopyBtn && els.patchCopyBtn.addEventListener("click", () => copyText(els.patchOut?.textContent || ""));
+  els.termCopyBtn && els.termCopyBtn.addEventListener("click", () => copyText(els.termOut?.textContent || ""));
+  els.termClearBtn && els.termClearBtn.addEventListener("click", () => setOut(els.termOut, "", ""));
+
+  ["targetSelect", "termCwd", "termCmd"].forEach((id) => {
+    const el = $(id);
+    if (!el) return;
+    el.addEventListener("input", renderCurrentJob);
+    el.addEventListener("change", renderCurrentJob);
+  });
+
+  renderCurrentJob();
+  renderResult({ status: "idle", summary: "No result yet." });
+  renderRepair("idle", "");
+  renderGit({ status: "idle", summary: "No Git action yet.", repo_root: REPO_ROOT });
+  setOut(els.statusOut, ["Bridge Ready", `Repo ${REPO_ROOT}`, "Scope Repo Root", "Default HOST"].join("\n"), "is-success");
 })();

@@ -6,79 +6,275 @@
   <link rel="stylesheet" href="sidebar.css" />
 </head>
 <body>
-  <div class="wrap">
-    <h1>Kestrel Repo Bridge</h1>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand-card">
+        <div class="brand-mark">K</div>
+        <div class="brand-copy">
+          <h1>Kestrel</h1>
+          <p>Repo Bridge</p>
+        </div>
+      </div>
 
-    <section class="card">
-      <div class="row">
-        <button id="pingBtn">Ping host</button>
-        <button id="targetsBtn">Targets</button>
-        <button id="stateBtn">State</button>
-        <button id="auditBtn">Audit tail</button>
-      </div>
-      <pre id="statusOut" class="out"></pre>
-    </section>
+      <section class="bridge-status-card compact">
+        <div class="side-label">Status</div>
+        <div class="status-line">
+          <span class="dot is-live"></span>
+          <span>Bridge Ready</span>
+        </div>
+        <div class="meta-pair"><span>Repo</span><span>/home/rick/GPT_Firefox_extension</span></div>
+        <div class="meta-pair"><span>Scope</span><span>Repo Root</span></div>
+        <div class="meta-pair"><span>Default</span><span>HOST</span></div>
+      </section>
 
-    <section class="card">
-      <h2>Operator memory</h2>
-      <label for="memoryKey">Key</label>
-      <input id="memoryKey" placeholder="current_focus" />
-      <label for="memoryValue">Value</label>
-      <textarea id="memoryValue" placeholder="What should persist?"></textarea>
-      <div class="row">
-        <button id="memorySaveBtn">Save memory</button>
-        <button id="memoryViewBtn">View memory</button>
-      </div>
-      <pre id="memoryOut" class="out"></pre>
-    </section>
+      <section class="side-section">
+        <div class="side-label">Action Loop</div>
+        <div class="loop-list">
+          <div class="loop-step is-active"><span class="step-num">1</span><span class="step-copy"><strong>Current Job</strong><small>What is queued now</small></span></div>
+          <div class="loop-step"><span class="step-num">2</span><span class="step-copy"><strong>Run</strong><small>Execute from terminal card</small></span></div>
+          <div class="loop-step"><span class="step-num">3</span><span class="step-copy"><strong>Result</strong><small>Output and status</small></span></div>
+          <div class="loop-step"><span class="step-num">4</span><span class="step-copy"><strong>Repair / Git</strong><small>Fix then record</small></span></div>
+        </div>
+      </section>
 
-    <section class="card">
-      <h2>Read file</h2>
-      <label for="readPath">Relative path</label>
-      <input id="readPath" placeholder="README.md" />
-      <div class="row">
-        <button id="readBtn">Read</button>
-      </div>
-      <pre id="readOut" class="out"></pre>
-    </section>
+      <section class="side-section">
+        <div class="side-label">Bridge</div>
+        <div class="tool-list">
+          <button id="pingBtn" type="button">Ping host</button>
+          <button id="stateBtn" type="button">State</button>
+          <button id="targetsBtn" type="button">Targets</button>
+          <button id="auditBtn" type="button">Audit tail</button>
+          <button id="copyStatusBtn" type="button">Copy status</button>
+        </div>
+        <pre id="statusOut" class="out selectable"></pre>
+      </section>
+    </aside>
 
-    <section class="card">
-      <h2>Apply patch</h2>
-      <label for="patchText">Unified diff</label>
-      <textarea id="patchText" placeholder="Paste a git-style unified diff here"></textarea>
-      <div class="row">
-        <button id="patchBtn">Apply patch</button>
-      </div>
-      <pre id="patchOut" class="out"></pre>
-    </section>
+    <main class="main-pane">
+      <section class="panel current-job-panel">
+        <div class="panel-head">
+          <div>
+            <h2>Current Job</h2>
+            <p>Live job state for the next or active action</p>
+          </div>
+          <span class="badge badge-warn" id="currentJobBadge">idle</span>
+        </div>
 
-    <section class="card">
-      <h2>Target terminal</h2>
-      <label for="targetSelect">Target</label>
-      <select id="targetSelect">
-        <option value="HOST">HOST</option>
-        <option value="NODE_TEMP">NODE_TEMP</option>
-        <option value="NODE_PERM">NODE_PERM</option>
-      </select>
-      <label for="termCwd">Working dir</label>
-      <input id="termCwd" placeholder=". or remote path" value="." />
-      <label for="termCmd">Command</label>
-      <input id="termCmd" placeholder="pwd" />
-      <div class="row checkbox-row">
-        <label class="checkbox-label"><input type="checkbox" id="elevateCheck" /> Use root helper</label>
-      </div>
-      <div class="row">
-        <button id="termRunBtn">Run</button>
-        <button id="termPollBtn">Poll</button>
-        <button id="termStopBtn">Stop</button>
-      </div>
-      <div class="row">
-        <button id="termCopyBtn">Copy output</button>
-        <button id="termClearBtn">Clear output</button>
-      </div>
-      <pre id="termOut" class="out term selectable"></pre>
-    </section>
+        <div class="job-grid">
+          <div class="job-details">
+            <div class="meta-pair"><span>Action</span><strong id="currentActionName">run_target_command</strong></div>
+            <div class="meta-pair"><span>Target</span><strong id="currentActionTarget">HOST</strong></div>
+            <div class="meta-pair"><span>Repo Root</span><strong id="currentRepoRoot">/home/rick/GPT_Firefox_extension</strong></div>
+            <div class="meta-pair"><span>Working Dir</span><strong id="currentActionCwd">.</strong></div>
+            <div class="meta-pair"><span>Command</span><strong id="currentActionCommand">pwd</strong></div>
+          </div>
+          <div class="job-status-card">
+            <div class="meta-pair"><span>Status</span><strong id="currentJobStatus">idle</strong></div>
+            <div class="meta-pair"><span>Next</span><strong id="currentJobNext">Enter a command below</strong></div>
+            <div class="meta-pair"><span>Job ID</span><strong id="currentJobId">—</strong></div>
+            <label class="check-row stack-row">
+              <input id="recordIfGoodCheck" type="checkbox" />
+              <span>Record in Git if successful</span>
+            </label>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel terminal-panel">
+        <div class="panel-head">
+          <div>
+            <h2>Target Terminal</h2>
+            <p>Define the command here, run it here</p>
+          </div>
+          <span class="badge badge-info">primary action</span>
+        </div>
+
+        <div class="terminal-grid">
+          <div class="terminal-form">
+            <label for="targetSelect">Target</label>
+            <select id="targetSelect">
+              <option value="HOST">HOST</option>
+              <option value="NODE_TEMP">NODE_TEMP</option>
+              <option value="NODE_PERM">NODE_PERM</option>
+            </select>
+
+            <label for="termCwd">Working dir</label>
+            <input id="termCwd" placeholder="." value="." />
+
+            <label for="termCmd">Command</label>
+            <textarea id="termCmd" class="command-box" placeholder="pwd"></textarea>
+            <p class="field-help">You can paste either a raw command or a full JSON action envelope. JSON will be unpacked automatically.</p>
+
+            <label class="checkbox-label inline-check">
+              <input type="checkbox" id="elevateCheck" />
+              <span>Use root helper</span>
+            </label>
+
+            <div class="button-row sticky-actions">
+              <button id="termRunBtn" type="button">Run now</button>
+              <button id="termPollBtn" type="button">Poll</button>
+              <button id="termStopBtn" type="button">Stop</button>
+              <button id="termCopyBtn" type="button">Copy output</button>
+              <button id="termClearBtn" type="button">Clear output</button>
+            </div>
+          </div>
+
+          <div class="terminal-sidecar">
+            <div class="terminal-tip-card">
+              <h3>How this works now</h3>
+              <ol>
+                <li>Set target, working dir, and command.</li>
+                <li>Click <strong>Run now</strong> here.</li>
+                <li>Watch <strong>Result</strong> below.</li>
+                <li>If good, record in Git.</li>
+              </ol>
+            </div>
+            <div class="terminal-tip-card subtle">
+              <h3>Example</h3>
+              <pre class="mini-pre">Working dir: .
+Command: pwd</pre>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel result-panel">
+        <div class="panel-head">
+          <div>
+            <h2>Result</h2>
+            <p>Execution output and normalized status</p>
+          </div>
+          <span class="badge badge-info" id="resultStateBadge">idle</span>
+        </div>
+        <div class="result-layout">
+          <div class="result-meta">
+            <div class="meta-pair"><span>Status</span><strong id="resultStatus">idle</strong></div>
+            <div class="meta-pair"><span>Started</span><strong id="resultStarted">—</strong></div>
+            <div class="meta-pair"><span>Duration</span><strong id="resultDuration">—</strong></div>
+            <div class="meta-pair"><span>Exit Code</span><strong id="resultExitCode">—</strong></div>
+          </div>
+          <div class="result-output">
+            <label for="termOut">Output</label>
+            <pre id="termOut" class="out term selectable"></pre>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel repair-panel">
+        <div class="panel-head">
+          <div>
+            <h2>Repair</h2>
+            <p>Apply a patch only after a failed or incomplete result</p>
+          </div>
+          <span class="badge" id="repairStateBadge">idle</span>
+        </div>
+        <div class="repair-layout">
+          <div class="repair-meta">
+            <div class="meta-pair"><span>Status</span><strong id="repairStatus">idle</strong></div>
+            <div class="meta-pair"><span>Attempts</span><strong id="repairAttempts">0</strong></div>
+            <div class="meta-pair"><span>Escalation</span><strong id="repairEscalation">none</strong></div>
+          </div>
+          <div class="repair-body">
+            <label for="patchText">Unified diff</label>
+            <textarea id="patchText" placeholder="Paste a git-style unified diff here"></textarea>
+            <div class="button-row">
+              <button id="patchBtn" type="button">Apply repair</button>
+              <button id="patchCopyBtn" type="button">Copy result</button>
+            </div>
+            <pre id="patchOut" class="out selectable"></pre>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel git-panel">
+        <div class="panel-head">
+          <div>
+            <h2>Git Record</h2>
+            <p>Record good state after success, not before</p>
+          </div>
+          <span class="badge" id="gitRecordBadge">Not Recorded</span>
+        </div>
+        <div class="git-layout">
+          <div class="git-meta">
+            <div class="meta-pair"><span>Repo</span><strong id="gitRepoRoot">/home/rick/GPT_Firefox_extension</strong></div>
+            <div class="meta-pair"><span>Branch</span><strong id="gitBranchName">main</strong></div>
+            <div class="meta-pair"><span>Status</span><strong id="gitTreeStatus">unknown</strong></div>
+          </div>
+          <div class="git-actions">
+            <div class="button-row">
+              <button id="gitStatusBtn" type="button">Git status</button>
+              <button id="gitDiffBtn" type="button">Git diff</button>
+              <button id="gitAddBtn" type="button">Git add</button>
+              <button id="gitCommitBtn" type="button">Git commit</button>
+            </div>
+            <pre id="gitOut" class="out selectable"></pre>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel advanced-panel">
+        <div class="panel-head">
+          <div>
+            <h2>Secondary Tools</h2>
+            <p>Still available, but no longer in the way</p>
+          </div>
+        </div>
+        <div class="advanced-grid">
+          <div class="advanced-card">
+            <h3>Read file</h3>
+            <label for="readPath">Relative path</label>
+            <input id="readPath" placeholder="README.md" value="README.md" />
+            <div class="button-row">
+              <button id="readBtn" type="button">Read</button>
+              <button id="readCopyBtn" type="button">Copy file</button>
+            </div>
+            <pre id="readOut" class="out selectable"></pre>
+          </div>
+
+          <div class="advanced-card">
+            <h3>Control loop</h3>
+            <div class="button-row">
+              <button id="workerStatusBtn" type="button">Worker status</button>
+              <button id="workerStartBtn" type="button">Start worker</button>
+              <button id="workerStopBtn" type="button">Stop worker</button>
+              <button id="workerRunOnceBtn" type="button">Run once</button>
+              <button id="workerCopyBtn" type="button">Copy worker</button>
+            </div>
+            <pre id="workerOut" class="out selectable"></pre>
+          </div>
+
+          <div class="advanced-card">
+            <h3>Prompt mailbox</h3>
+            <label for="promptTopic">Topic</label>
+            <input id="promptTopic" placeholder="What is this prompt about?" />
+            <label for="promptText">Prompt</label>
+            <textarea id="promptText" class="prompt-box" placeholder="Type a prompt for the broker to push into the repo mailbox."></textarea>
+            <div class="button-row">
+              <button id="promptSendBtn" type="button">Send prompt</button>
+              <button id="promptClearBtn" type="button">Clear prompt</button>
+              <button id="promptCopyBtn" type="button">Copy result</button>
+            </div>
+            <pre id="promptOut" class="out selectable"></pre>
+          </div>
+
+          <div class="advanced-card">
+            <h3>Operator memory</h3>
+            <label for="memoryKey">Key</label>
+            <input id="memoryKey" placeholder="current_focus" />
+            <label for="memoryValue">Value</label>
+            <textarea id="memoryValue" placeholder="What should persist?"></textarea>
+            <div class="button-row">
+              <button id="memorySaveBtn" type="button">Save memory</button>
+              <button id="memoryViewBtn" type="button">View memory</button>
+              <button id="memoryCopyBtn" type="button">Copy memory</button>
+            </div>
+            <pre id="memoryOut" class="out selectable"></pre>
+          </div>
+        </div>
+      </section>
+    </main>
   </div>
+
   <script src="sidebar.js"></script>
 </body>
 </html>
