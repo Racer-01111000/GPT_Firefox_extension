@@ -274,6 +274,12 @@
     currentJob.git = { eligible: false, recorded: false };
     currentJob.telegram = { sent: false, awaiting_reply: false };
 
+    if (els.targetSelect) els.targetSelect.value = "HOST";
+    if (els.termCwd) els.termCwd.value = ".";
+    if (els.termCmd) els.termCmd.value = "";
+    if (els.elevateCheck) els.elevateCheck.checked = false;
+    if (els.recordIfGoodCheck) els.recordIfGoodCheck.checked = false;
+
     renderCurrentJob();
     renderResult({ status: "idle", summary: "No result yet." });
     renderRepair("idle", "");
@@ -282,6 +288,9 @@
     setOut(els.termOut, "", "");
     setOut(els.patchOut, "", "");
     setOut(els.gitOut, "", "");
+    setOut(els.readOut, "", "");
+    setOut(els.promptOut, "", "");
+    setOut(els.memoryOut, "", "");
     setOut(els.workerOut, summarizeData(res.raw?.data) || res.stdout || res.summary || safeString(res), "is-success");
   }
 
