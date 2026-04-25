@@ -667,8 +667,12 @@ def start_target_command(repo_root: str, policy: dict, state: dict, target_name:
     if not target_cfg.get("enabled", False):
         raise HostError("target_disabled", f"Target is disabled: {target_name}")
     if target_cfg.get("kind") == "local":
-        display_cwd = normalize_relpath(repo_root, cwd or ".")
-        abs_cwd = repo_root if display_cwd == "." else os.path.join(repo_root, display_cwd)
+        target_root = expand_path(target_cfg.get("root", repo_root))
+        if not os.path.isdir(target_root):
+            raise HostError("bad_target_root", f"Target root does not exist: {target_root}")
+
+        display_cwd = normalize_relpath(target_root, cwd or ".")
+        abs_cwd = target_root if display_cwd == "." else os.path.join(target_root, display_cwd)
         popen_cmd = build_host_command(target_cfg, command, elevate)
     elif target_cfg.get("kind") == "ssh":
         display_cwd = (cwd or target_cfg.get("default_cwd", "~")).strip() or target_cfg.get("default_cwd", "~")
