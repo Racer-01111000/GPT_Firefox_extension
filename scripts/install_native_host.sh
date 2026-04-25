@@ -85,6 +85,17 @@ defaults = {
                 "path": "",
                 "mode": "unknown"
             }
+        },
+        "NODE_WORKLOAD": {
+            "kind": "local",
+            "enabled": True,
+            "root": "/home/rick/Node_Temp_Node",
+            "default_cwd": ".",
+            "root_helper": {
+                "enabled": False,
+                "path": "",
+                "mode": "disabled"
+            }
         }
     },
     "control": {
