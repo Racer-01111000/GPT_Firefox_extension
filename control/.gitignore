@@ -1,8 +1,6 @@
-# Runtime control-loop files
+# Runtime control-loop queue files
 /inbox/*
-/outbox/*
 /claims/*
-/mailbox/user_prompts/*
 
 # Keep directory placeholders
 !/inbox/.gitkeep

@@ -138,10 +138,12 @@ def execute_once(repo_root: str, state: dict, policy: dict) -> dict:
     state.setdefault("control", {})["last_result_id"] = cmd_id
     bridge_host.save_state(state)
 
+    # Do not record the live inbox/current.json queue file.
+    # Record only the durable outbox result artifact.
     sync = bridge_host.sync_control_commit(
         repo_root,
         state,
-        [current_path, outbox_path],
+        [outbox_path],
         f"Process control command {cmd_id}",
     )
     result["sync"] = sync
