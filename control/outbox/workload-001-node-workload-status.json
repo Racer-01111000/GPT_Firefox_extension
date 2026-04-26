@@ -1,0 +1,13 @@
+{
+  "id": "workload-001-node-workload-status",
+  "target": "NODE_WORKLOAD",
+  "command": "git status --short --branch",
+  "cwd": ".",
+  "use_root_helper": false,
+  "started_at": "2026-04-26T03:09:09.879907+00:00",
+  "status": "finished",
+  "returncode": 0,
+  "stdout": "## main...origin/main [ahead 2]\n",
+  "stderr": "",
+  "finished_at": "2026-04-26T03:09:09.886655+00:00"
+}
