@@ -1,0 +1,13 @@
+{
+  "id": "workload-003-inspect-ingest-interfaces",
+  "target": "NODE_WORKLOAD",
+  "command": "python3 real_ingest.py --help; echo '--- ingest_loop.py ---'; python3 ingest_loop.py --help; echo '--- generate_corpus.py ---'; python3 generate_corpus.py --help",
+  "cwd": ".",
+  "use_root_helper": false,
+  "started_at": "2026-04-26T03:19:21.036494+00:00",
+  "status": "finished",
+  "returncode": -15,
+  "stdout": "--- ingest_loop.py ---\n",
+  "stderr": "Traceback (most recent call last):\n  File \"/home/rick/Node_Temp_Node/real_ingest.py\", line 40, in <module>\n    save(entries)\n    ~~~~^^^^^^^^^\n  File \"/home/rick/Node_Temp_Node/real_ingest.py\", line 33, in save\n    with open(OUT, \"a\") as f:\n         ~~~~^^^^^^^^^^\nFileNotFoundError: [Errno 2] No such file or directory: '/home/rick/Node_Temp/training/corpus/arxiv_feed.jsonl'\n",
+  "finished_at": "2026-04-26T03:20:53.552847+00:00"
+}
