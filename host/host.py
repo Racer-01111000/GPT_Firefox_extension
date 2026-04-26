@@ -151,7 +151,7 @@ def default_state(repo_root: str) -> dict:
             "NODE_WORKLOAD": {
                 "kind": "local",
                 "enabled": True,
-                "root": "/home/rick/Node_Temp_Node",
+                "root": "/home/rick/NODE",
                 "default_cwd": ".",
                 "root_helper": {
                     "enabled": False,
