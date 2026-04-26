@@ -100,7 +100,8 @@ def execute_once(repo_root: str, state: dict, policy: dict) -> dict:
         targets = state.get("targets", {})
         target_cfg = targets.get(target, {})
         if target_cfg.get("kind") == "local":
-            abs_cwd = repo_root if cwd in ("", ".") else os.path.join(repo_root, bridge_host.normalize_relpath(repo_root, cwd))
+            target_root = bridge_host.expand_path(target_cfg.get("root", repo_root))
+            abs_cwd = target_root if cwd in ("", ".") else os.path.join(target_root, bridge_host.normalize_relpath(target_root, cwd))
             popen_cmd = bridge_host.build_host_command(target_cfg, command, elevate)
         elif target_cfg.get("kind") == "ssh":
             abs_cwd = None
