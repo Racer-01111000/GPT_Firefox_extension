@@ -1,13 +1,13 @@
 {
   "id": "workload-002-inspect-node-scripts",
   "target": "NODE_WORKLOAD",
-  "command": "ls -la && find . -maxdepth 3 -type f \\( -name \"*.py\" -o -name \"*.sh\" -o -name \"README*\" \\) | sort",
+  "command": "ls -la && find . -maxdepth 3 -type f -name \"*.py\" -o -name \"*.sh\" -o -name \"README*\" | sort",
   "cwd": ".",
   "use_root_helper": false,
-  "started_at": "2026-04-26T03:11:23.035369+00:00",
+  "started_at": "2026-04-26T03:17:16.971630+00:00",
   "status": "finished",
   "returncode": 0,
-  "stdout": "total 44\ndrwxrwxr-x  7 rick rick 4096 Apr 25 14:56 .\ndrwx------ 16 rick rick 4096 Apr 25 17:46 ..\ndrwxr-xr-x  6 rick rick 4096 Apr 24 10:24 control\ndrwxr-xr-x  4 rick rick 4096 Apr 24 09:30 extension\ndrwxrwxr-x  8 rick rick 4096 Apr 26 10:09 .git\n-rw-rw-r--  1 rick rick 4688 Apr 22 13:38 .gitignore\ndrwxr-xr-x  3 rick rick 4096 Apr 23 08:03 host\n-rw-rw-r--  1 rick rick 1069 Apr 22 13:38 LICENSE\n-rw-r--r--  1 rick rick  573 Apr 22 12:46 README.md\ndrwxr-xr-x  2 rick rick 4096 Apr 22 09:32 scripts\n./control/README.md\n./host/control_worker.py\n./host/host.py\n./README.md\n./scripts/install_native_host.sh\n",
+  "stdout": "total 52\ndrwxrwxr-x  7 rick rick 4096 Apr 25 17:46 .\ndrwx------ 16 rick rick 4096 Apr 25 17:46 ..\n-rw-rw-r--  1 rick rick 1429 Apr 25 17:46 generate_corpus.py\ndrwxrwxr-x  8 rick rick 4096 Apr 26 10:09 .git\ndrwxrwxr-x  2 rick rick 4096 Apr 25 17:46 handoff\n-rw-rw-r--  1 rick rick 1592 Apr 25 17:46 ingest_loop.py\ndrwxrwxr-x  3 rick rick 4096 Apr 25 17:46 metadata\n-rw-rw-r--  1 rick rick 1278 Apr 25 17:46 README.md\n-rw-rw-r--  1 rick rick 1102 Apr 25 17:46 real_ingest.py\ndrwxrwxr-x  2 rick rick 4096 Apr 25 17:46 runtime\n-rwxrwxr-x  1 rick rick   83 Apr 25 17:46 run_ui.sh\ndrwxrwxr-x  4 rick rick 4096 Apr 25 17:46 training\n-rw-rw-r--  1 rick rick 3411 Apr 25 17:46 ui_server.py\n./generate_corpus.py\n./ingest_loop.py\n./README.md\n./real_ingest.py\n./run_ui.sh\n./ui_server.py\n",
   "stderr": "",
-  "finished_at": "2026-04-26T03:11:23.044112+00:00"
+  "finished_at": "2026-04-26T03:17:16.980133+00:00"
 }
