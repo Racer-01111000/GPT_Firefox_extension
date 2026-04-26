@@ -1,0 +1,13 @@
+{
+  "id": "workload-002-inspect-node-scripts",
+  "target": "NODE_WORKLOAD",
+  "command": "ls -la && find . -maxdepth 3 -type f \\( -name \"*.py\" -o -name \"*.sh\" -o -name \"README*\" \\) | sort",
+  "cwd": ".",
+  "use_root_helper": false,
+  "started_at": "2026-04-26T03:11:23.035369+00:00",
+  "status": "finished",
+  "returncode": 0,
+  "stdout": "total 44\ndrwxrwxr-x  7 rick rick 4096 Apr 25 14:56 .\ndrwx------ 16 rick rick 4096 Apr 25 17:46 ..\ndrwxr-xr-x  6 rick rick 4096 Apr 24 10:24 control\ndrwxr-xr-x  4 rick rick 4096 Apr 24 09:30 extension\ndrwxrwxr-x  8 rick rick 4096 Apr 26 10:09 .git\n-rw-rw-r--  1 rick rick 4688 Apr 22 13:38 .gitignore\ndrwxr-xr-x  3 rick rick 4096 Apr 23 08:03 host\n-rw-rw-r--  1 rick rick 1069 Apr 22 13:38 LICENSE\n-rw-r--r--  1 rick rick  573 Apr 22 12:46 README.md\ndrwxr-xr-x  2 rick rick 4096 Apr 22 09:32 scripts\n./control/README.md\n./host/control_worker.py\n./host/host.py\n./README.md\n./scripts/install_native_host.sh\n",
+  "stderr": "",
+  "finished_at": "2026-04-26T03:11:23.044112+00:00"
+}
